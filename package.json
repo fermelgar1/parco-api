@@ -1,0 +1,23 @@
+{
+  "name": "parcoApi",
+  "version": "1.0.0",
+  "description": "",
+  "main": "src/app.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "prisma": "^2.29.0-dev.14"
+  },
+  "dependencies": {
+    "@prisma/client": "^2.29.0-dev.14",
+    "axios": "^0.21.1",
+    "bcrypt": "^5.0.1",
+    "csv-express": "^1.2.2",
+    "express": "^4.17.1",
+    "jsonwebtoken": "^8.5.1"
+  }
+}
