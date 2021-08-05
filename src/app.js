@@ -4,20 +4,34 @@ const axios = require('axios');
 const csv = require('csv-express');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
+const Joi = require('joi');
 
-const saltRounds = 10;
-const salt = bcrypt.genSaltSync(saltRounds);
 const prisma = new PrismaClient();
 const app = express();
 
+const saltRounds = 10;
 const secreto = 'parcoapisecreto';
 const port = 5000;
+const salt = bcrypt.genSaltSync(saltRounds);
+
+const schemaSignIn = Joi.object({
+	nombre: Joi.string().pattern(new RegExp('^[a-zA-Z]+(([,. -][a-zA-Z ])?[a-zA-Z]*)*$')),
+	contrasena: Joi.string().pattern(new RegExp(RegExp('^[a-zA-Z0-9.]{3,30}$'))),
+	telefono: Joi.string().pattern(new RegExp('^[0-9]{10}$')),
+	token: Joi.string(),
+	monto: Joi.number(),
+	idEstacionamieno: Joi.string(),
+	idUsuario: Joi.string(),
+	id: Joi.string(),
+	correo: Joi.string().email({ minDomainSegments: 2, tlds: { allow: ['com', 'net'] } })
+});
 
 app.post('/signIn', async (req, res) => {
 	try {
 		const datos = req.query;
 		const fechaCreacion = Date.now();
 		const contrasena = bcrypt.hashSync(datos.contrasena, salt);
+		const validated = await schemaSignIn.validateAsync(datos);
 		const post = await prisma.usuario.create({
 			data: {
 				...datos,
@@ -29,7 +43,6 @@ app.post('/signIn', async (req, res) => {
 		res.json(post);
 	} catch (error) {
 		res.status(500).json({ message: error.message });
-		console.log(`error`, error.message)
 	}
 });
 
@@ -45,10 +58,8 @@ app.get('/logIn', async (req, res) => {
 			if (bcrypt.compareSync(contrasena, usuario.contrasena)) {
 				const token = jwt.sign({ data: usuario }, secreto, { expiresIn: '24h' });
 				res.json(token);
-			}
-			else res.json({ message: "contrasena incorrecta" });
-		}
-		else res.json({ message: "usuario no encontrado" });
+			} else res.json({ message: "contrasena incorrecta" });
+		} else res.json({ message: "usuario no encontrado" });
 	} catch (error) {
 		res.status(500).json({ message: error.message });
 	}
@@ -57,25 +68,26 @@ app.get('/logIn', async (req, res) => {
 app.patch('/modificar', async (req, res) => {
 	try {
 		const datos = req.query;
+		const validated = await schemaSignIn.validateAsync(datos);
 		const usuarioDecodificado = jwt.verify(datos.token, secreto);
+		let usuario = [];
 		if (!usuarioDecodificado) {
 			res.json({ message: 'no autorizado' });
 		}
 		const id = usuarioDecodificado.data.id;
 		if (datos.contrasena) {
 			const contrasena = bcrypt.hashSync(datos.contrasena, salt);
-			const usuario = await prisma.usuario.update({
+			usuario = await prisma.usuario.update({
 				where: { id },
 				data: { ...datos, contrasena },
 			});
-			res.json(usuario);
 		} else {
-			const usuario = await prisma.usuario.update({
+			usuario = await prisma.usuario.update({
 				where: { id },
 				data: { ...datos },
 			});
-			res.json(usuario);
 		}
+		res.json(usuario);
 	} catch (error) {
 		res.status(500).json({ message: error.message });
 	}
@@ -88,6 +100,7 @@ app.post('/abonar', async (req, res) => {
 			res.json({ message: 'no autorizado' });
 		}
 		const { id, monto } = req.query;
+		const validated = await schemaSignIn.validateAsync(req.query);
 		const usuarioS = await prisma.usuario.findUnique({
 			where: { id },
 		});
@@ -119,6 +132,7 @@ app.post('/pagarEstacionamiento', async (req, res) => {
 			res.json({ message: 'no autorizado' });
 		}
 		const { idUsuario, monto, idEstacionamieno } = req.query;
+		const validated = await schemaSignIn.validateAsync(req.query);
 		const total = parseFloat(monto);
 		const fechaCreacion = Date.now();
 		const boleto = Math.floor(Math.random() * 10000) + "" + Math.floor(Math.random() * 10000) + "" + Math.floor(Math.random() * 10000);
@@ -127,6 +141,9 @@ app.post('/pagarEstacionamiento', async (req, res) => {
 		});
 		const estacionamientos = await axios.get('https://dev.parcoapp.com/api/Parkings');
 		const estacionamiento = estacionamientos.data.filter(item => item.id === idEstacionamieno);
+		if (estacionamiento.length === 0) {
+			res.json({ message: "estacionamiento no encontrado" });
+		}
 		if (usuario.saldoDisponible >= total && estacionamiento[0].status === 0) {
 			const nuevoSaldo = usuario.saldoDisponible - total;
 			const NuevoUsuario = await prisma.usuario.update({
@@ -171,7 +188,7 @@ app.get('/reporteEstacionamiento', async (req, res) => {
 		if (!usuarioDecodificado) {
 			res.json({ message: 'no autorizado' });
 		}
-		if (usuarioDecodificado.data.tipo !== '0' ) {
+		if (usuarioDecodificado.data.tipo !== '0') {
 			res.json({ message: 'no autorizado' });
 		}
 		let reporte = [];
